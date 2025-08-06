@@ -10,9 +10,17 @@ import {
   ensure,
   unthunk,
   inspect,
-  getConfigFromSchemaObject,
-  sortKeyColumns
+  getConfigFromSchemaObject
 } from '../util'
+
+import {
+  isObjectType,
+  isUnionType,
+  isInterfaceType,
+  isListType,
+  isNonNullType,
+  isScalarType,
+} from "graphql"
 
 class SQLASTNode {
   constructor(parentNode, props) {
@@ -27,11 +35,36 @@ class SQLASTNode {
   }
 }
 
+// any value here needs to be paired with an instance type checking function from graphql in isOneOfGraphQLTypes()
+const ALL_TYPES_TO_CHECK = new Set(['GraphQLObjectType', 
+                                    'GraphQLUnionType', 
+                                    'GraphQLInterfaceType', 
+                                    'GraphQLList', 
+                                    'GraphQLNonNull',
+                                    'GraphQLScalarType'])
+
+
+function isOneOfGraphQLTypes(instance, typeStringArray) {
+  let returnVal = false
+  typeStringArray.forEach(typeString => {
+    if (typeString === 'GraphQLObjectType' && isObjectType(instance)) returnVal = true
+    if (typeString === 'GraphQLUnionType' && isUnionType(instance)) returnVal = true
+    if (typeString === 'GraphQLInterfaceType' &&  isInterfaceType(instance)) returnVal = true
+    if (typeString === 'GraphQLList' &&  isListType(instance)) returnVal = true
+    if (typeString === 'GraphQLNonNull' &&  isNonNullType(instance)) returnVal = true
+    if (typeString === 'GraphQLScalarType' &&  isScalarType(instance)) returnVal = true
+    if (!ALL_TYPES_TO_CHECK.has(typeString)) {
+      throw new Error('unexpected input to isOneOfGraphQLTypes()')
+    }
+  })
+  return returnVal
+}
 // an enumeration of all the types that can map to SQL tables
 const TABLE_TYPES = [
   'GraphQLObjectType',
   'GraphQLUnionType',
-  'GraphQLInterfaceType'
+  'GraphQLInterfaceType',
+  'GraphQLScalarType'
 ]
 
 function mergeAll(fieldNodes) {
@@ -60,7 +93,8 @@ export function queryASTToSqlAST(resolveInfo, options, context) {
   // we need varying degrees of uniqueness and readability
   // force oracle to minify, because it has this 30-character limit on column identifiers
   const namespace = new AliasNamespace(
-    options.dialect === 'oracle' ? true : options.minify
+    options.dialect === 'oracle' ? true : options.minify,
+    options.aliasPrefix
   )
 
   // we'll build up the AST representing the SQL recursively
@@ -166,14 +200,14 @@ export function populateASTNode(
   sqlASTNode.args = getArgumentValues(field, queryASTNode, this.variableValues)
 
   // if list then mark flag true & get the type inside the GraphQLList container type
-  if (gqlType.constructor.name === 'GraphQLList') {
+  if (isOneOfGraphQLTypes(gqlType, ['GraphQLList'])) {
     gqlType = stripNonNullType(gqlType.ofType)
     grabMany = true
   }
 
   // if its a relay connection, there are several things we need to do
   if (
-    gqlType.constructor.name === 'GraphQLObjectType' &&
+    isOneOfGraphQLTypes(gqlType, ['GraphQLObjectType']) &&
     gqlType._fields.edges &&
     gqlType._fields.pageInfo
   ) {
@@ -186,6 +220,19 @@ export function populateASTNode(
     // we'll set a flag for pagination.
     if (fieldConfig.sqlPaginate) {
       sqlASTNode.paginate = true
+      if (fieldConfig.sqlPageLimit) {
+        if (
+          fieldConfig.sqlPageLimit < sqlASTNode.args.first ||
+          fieldConfig.sqlPageLimit < sqlASTNode.args.last
+        ) {
+          throw new Error(
+            `Maximum page size of ${gqlType.name} type is ${fieldConfig.sqlPageLimit}`
+          )
+        }
+      }
+      if (fieldConfig.sqlDefaultPageSize) {
+        sqlASTNode.defaultPageSize = fieldConfig.sqlDefaultPageSize
+      }
     }
   } else if (fieldConfig.sqlPaginate) {
     throw new Error(
@@ -198,7 +245,7 @@ export function populateASTNode(
   // is this a table in SQL?
   if (
     !fieldConfig.ignoreTable &&
-    TABLE_TYPES.includes(gqlType.constructor.name) &&
+    isOneOfGraphQLTypes(gqlType, TABLE_TYPES) &&
     config.sqlTable
   ) {
     if (depth >= 1) {
@@ -242,8 +289,9 @@ export function populateASTNode(
     // is it just a column? if they specified a sqlColumn or parentTypeNode is a GraphQLObjectType, yeah
     // recent apollo-server-core always define a field resolver
     // see enablePluginsForSchemaResolvers function: apollo-server issue #3988
-  } else if (fieldConfig.sqlColumn ||
-    ['GraphQLObjectType', 'GraphQLInterfaceType'].includes(parentTypeNode.constructor.name)
+  } else if (
+    fieldConfig.sqlColumn ||
+      isOneOfGraphQLTypes(parentTypeNode, ['GraphQLObjectType', 'GraphQLInterfaceType'])
   ) {
     sqlASTNode.type = 'column'
     sqlASTNode.name = fieldConfig.sqlColumn || field.name
@@ -279,12 +327,6 @@ function handleTable(
   // if thats taken, this function will just add an underscore to the end to make it unique
   sqlASTNode.as = namespace.generate('table', field.name)
 
-  if (fieldConfig.orderBy && !sqlASTNode.orderBy) {
-    sqlASTNode.orderBy = handleOrderBy(
-      unthunk(fieldConfig.orderBy, sqlASTNode.args || {}, context)
-    )
-  }
-
   // tables have child fields, lets push them to an array
   const children = (sqlASTNode.children = sqlASTNode.children || [])
 
@@ -319,12 +361,6 @@ function handleTable(
         fieldConfig.junction.include,
         sqlASTNode.args || {},
         context
-      )
-    }
-
-    if (fieldConfig.junction.orderBy) {
-      junction.orderBy = handleOrderBy(
-        unthunk(fieldConfig.junction.orderBy, sqlASTNode.args || {}, context)
       )
     }
 
@@ -379,8 +415,33 @@ function handleTable(
     )
   }
 
+  if (fieldConfig.offset) {
+    assert(fieldConfig.orderBy, '`limit` is required with `offset`')
+    sqlASTNode.offset = unthunk(fieldConfig.offset, sqlASTNode.args || {}, context)
+  }
+
+  handleOrdering(fieldConfig, sqlASTNode, context)
+
   if (sqlASTNode.paginate) {
-    getSortColumns(field, sqlASTNode, context)
+    if (!sqlASTNode.sortKey && !sqlASTNode.orderBy) {
+      if (sqlASTNode.junction) {
+        if (!sqlASTNode.junction.sortKey && !sqlASTNode.junction.orderBy) {
+          throw new Error(
+            '"sortKey" or "orderBy" required if "sqlPaginate" is true'
+          )
+        }
+      } else {
+        throw new Error(
+          '"sortKey" or "orderBy" required if "sqlPaginate" is true'
+        )
+      }
+    }
+    if (sqlASTNode.sortKey && idx(sqlASTNode, _ => _.junction.sortKey)) {
+      throw new Error('"sortKey" must be on junction or main table, not both')
+    }
+    if (sqlASTNode.orderBy && idx(sqlASTNode, _ => _.junction.orderBy)) {
+      throw new Error('"orderBy" must be on junction or main table, not both')
+    }
   }
 
   /*
@@ -413,12 +474,30 @@ function handleTable(
   // its been generalized to `alwaysFetch`, as its a useful feature for more than just unions
   if (
     config.typeHint &&
-    ['GraphQLUnionType', 'GraphQLInterfaceType'].includes(
-      gqlType.constructor.name
-    )
+    isOneOfGraphQLTypes(gqlType, ['GraphQLUnionType', 'GraphQLInterfaceType'])
   ) {
     deprecate('`typeHint` is deprecated. Use `alwaysFetch` instead.')
     children.push(columnToASTChild(config.typeHint, namespace))
+  }
+
+  // Handle junction alwaysFetch columns
+  if (fieldConfig.junction && fieldConfig.junction.alwaysFetch) {
+    const alwaysFetch = wrap(unthunk(
+      fieldConfig.junction.alwaysFetch,
+      sqlASTNode.args || {},
+      context
+    ))
+  
+    for (let column of alwaysFetch) {
+      const columnChild = columnToASTChild(
+        unthunk(column, sqlASTNode.args || {}, context),
+        namespace
+      )
+      columnChild.fromOtherTable = sqlASTNode.junction.as
+    
+      // Add directly to children at this point, after all standard columns
+      sqlASTNode.children.push(columnChild)
+    }
   }
 
   // go handle the pagination information
@@ -428,8 +507,7 @@ function handleTable(
 
   if (queryASTNode.selectionSet) {
     if (
-      gqlType.constructor.name === 'GraphQLUnionType' ||
-      gqlType.constructor.name === 'GraphQLInterfaceType'
+      isOneOfGraphQLTypes(gqlType, ['GraphQLUnionType', 'GraphQLInterfaceType'])
     ) {
       // union types have special rules for the child fields in join monster
       sqlASTNode.type = 'union'
@@ -477,12 +555,15 @@ function handleUnionSelections(
     // we need to figure out what kind of selection this is
     switch (selection.kind) {
       case 'Field':
+        const alias = selection.alias && selection.alias.value
+
         // has this field been requested once already? GraphQL does not protect against duplicates so we have to check for it
         const existingNode = children.find(
           child =>
             child.fieldName === selection.name.value && child.type === 'table'
+            && (child.alias && child.alias.value) === alias
         )
-        let newNode = new SQLASTNode(sqlASTNode)
+        let newNode = new SQLASTNode(sqlASTNode, { alias })
         if (existingNode) {
           newNode = existingNode
         } else {
@@ -510,8 +591,7 @@ function handleUnionSelections(
           // but the gqlType is the Union. The data isn't there, its on each of the types that make up the union
           // lets find that type and handle the selections based on THAT type instead
           const deferredType = this.schema._typeMap[selectionNameOfType]
-          const deferToObjectType =
-            deferredType.constructor.name === 'GraphQLObjectType'
+          const deferToObjectType = isOneOfGraphQLTypes(deferredType, ['GraphQLObjectType'])
           const handler = deferToObjectType
             ? handleSelections
             : handleUnionSelections
@@ -542,8 +622,7 @@ function handleUnionSelections(
           const fragment = this.fragments[fragmentName]
           const fragmentNameOfType = fragment.typeCondition.name.value
           const deferredType = this.schema._typeMap[fragmentNameOfType]
-          const deferToObjectType =
-            deferredType.constructor.name === 'GraphQLObjectType'
+          const deferToObjectType = isOneOfGraphQLTypes(deferredType, ['GraphQLObjectType'])
           const handler = deferToObjectType
             ? handleSelections
             : handleUnionSelections
@@ -591,12 +670,15 @@ function handleSelections(
     switch (selection.kind) {
       // if its another field, recurse through that
       case 'Field':
+        const alias = selection.alias && selection.alias.value
+
         // has this field been requested once already? GraphQL does not protect against duplicates so we have to check for it
         const existingNode = children.find(
           child =>
             child.fieldName === selection.name.value && child.type === 'table'
+            && (child.alias && child.alias.value) === alias
         )
-        let newNode = new SQLASTNode(sqlASTNode)
+        let newNode = new SQLASTNode(sqlASTNode, { alias })
         if (existingNode) {
           newNode = existingNode
         } else {
@@ -715,8 +797,8 @@ function handleColumnsRequiredForPagination(sqlASTNode, namespace) {
     const sortKey = sqlASTNode.sortKey || sqlASTNode.junction.sortKey
 
     // this type of paging uses the "sort key(s)". we need to get this in order to generate the cursor
-    for (let column of sortKeyColumns(sortKey)) {
-      const newChild = columnToASTChild(column, namespace)
+    for (let key of sortKey) {
+      const newChild = columnToASTChild(key.column, namespace)
       // if this joining on a "through-table", the sort key is on the threw table instead of this node's parent table
       if (!sqlASTNode.sortKey) {
         newChild.fromOtherTable = sqlASTNode.junction.as
@@ -765,7 +847,7 @@ function stripRelayConnection(gqlType, queryASTNode, fragments) {
 }
 
 function stripNonNullType(type) {
-  return type.constructor.name === 'GraphQLNonNull' ? type.ofType : type
+  return isOneOfGraphQLTypes(type, ['GraphQLNonNull']) ? type.ofType : type
 }
 
 // go through and make sure se only ask for each sqlDep once per table
@@ -819,53 +901,28 @@ export function pruneDuplicateSqlDeps(sqlAST, namespace) {
   }
 }
 
-function getSortColumns(field, sqlASTNode, context) {
-  const fieldConfig = getConfigFromSchemaObject(field)
-
+function handleOrdering(fieldConfig, sqlASTNode, context) {
   if (fieldConfig.sortKey) {
-    sqlASTNode.sortKey = unthunk(
-      fieldConfig.sortKey,
-      sqlASTNode.args || {},
-      context
-    )
+    sqlASTNode.sortKey = handleSortKey(fieldConfig.sortKey, sqlASTNode, context)
   }
-  if (fieldConfig.orderBy) {
-    sqlASTNode.orderBy = handleOrderBy(
-      unthunk(fieldConfig.orderBy, sqlASTNode.args || {}, context)
-    )
+  if (fieldConfig.orderBy && !sqlASTNode.orderBy) {
+    sqlASTNode.orderBy = handleOrderBy(fieldConfig.orderBy, sqlASTNode, context)
   }
   if (fieldConfig.junction) {
     if (fieldConfig.junction.sortKey) {
-      sqlASTNode.junction.sortKey = unthunk(
+      sqlASTNode.junction.sortKey = handleSortKey(
         fieldConfig.junction.sortKey,
-        sqlASTNode.args || {},
+        sqlASTNode,
         context
       )
     }
     if (fieldConfig.junction.orderBy) {
       sqlASTNode.junction.orderBy = handleOrderBy(
-        unthunk(fieldConfig.junction.orderBy, sqlASTNode.args || {}, context)
+        fieldConfig.junction.orderBy, 
+        sqlASTNode, 
+        context
       )
     }
-  }
-  if (!sqlASTNode.sortKey && !sqlASTNode.orderBy) {
-    if (sqlASTNode.junction) {
-      if (!sqlASTNode.junction.sortKey && !sqlASTNode.junction.orderBy) {
-        throw new Error(
-          '"sortKey" or "orderBy" required if "sqlPaginate" is true'
-        )
-      }
-    } else {
-      throw new Error(
-        '"sortKey" or "orderBy" required if "sqlPaginate" is true'
-      )
-    }
-  }
-  if (sqlASTNode.sortKey && idx(sqlASTNode, _ => _.junction.sortKey)) {
-    throw new Error('"sortKey" must be on junction or main table, not both')
-  }
-  if (sqlASTNode.orderBy && idx(sqlASTNode, _ => _.junction.orderBy)) {
-    throw new Error('"orderBy" must be on junction or main table, not both')
   }
 }
 
@@ -907,9 +964,33 @@ const validateAndNormalizeDirection = direction => {
   return direction
 }
 
+export function handleSortKey(thunkedSortKey, sqlASTNode, context) {
+  const sortKey = unthunk(thunkedSortKey, sqlASTNode.args || {}, context)
+  if (!sortKey) return undefined
+  const orderings = []
+  if (Array.isArray(sortKey)) {
+    for (const { column, direction } of sortKey) {
+      assert(
+        column,
+        `Each "sortKey" array entry must have a 'column' and a 'direction' property`
+      )
+      orderings.push({ column, direction: validateAndNormalizeDirection(direction) })
+    }
+  } else {
+    assert(sortKey.order, 'A "sortKey" object must have an "order"')
+
+    for (const column of wrap(sortKey.key)) {
+      orderings.push({ column, direction: validateAndNormalizeDirection(sortKey.order) })
+    }
+  }
+
+  return orderings
+}
+
 // Normalize the three styles of orderBy to an array of {column, direction} objects.
 // orderBy could be just a string, interpreted as a column name, or an object of column: direction key values, or an array of { column, direction }s already.
-export function handleOrderBy(orderBy) {
+export function handleOrderBy(thunkedOrderBy, sqlASTNode, context) {
+  const orderBy = unthunk(thunkedOrderBy, sqlASTNode.args || {}, context)
   if (!orderBy) return undefined
   const orderings = []
   if (Array.isArray(orderBy)) {

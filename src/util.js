@@ -72,7 +72,7 @@ export function maybeQuote(value, dialectName) {
     return 'NULL'
   }
 
-  if (typeof value === 'number') return value
+  if (typeof value === 'number' || typeof value === 'bigint') return value
   if (value && typeof value.toSQL === 'function') return value.toSQL()
   if (
     value instanceof Buffer &&
@@ -245,19 +245,4 @@ export async function compileSqlAST(sqlAST, context, options) {
     debug(emphasize('SHAPE_DEFINITION'), inspect(shapeDefinition))
   }
   return { sql, shapeDefinition }
-}
-
-// Normalize the two different sortKey styles into one list of strings representing all the columns that will be sorted on
-export function sortKeyColumns(sortKey) {
-  return Array.isArray(sortKey)
-    ? sortKey.map(sort => {
-        assert(
-          sort.column,
-          `Each sortKey entry in an array must have a 'column' property, got ${JSON.stringify(
-            sortKey
-          )} instead`
-        )
-        return sort.column
-      })
-    : wrap(sortKey.key)
 }

@@ -65,7 +65,7 @@ npm run db-down
 
 Run `npm install` and `npm run db-build` to prepare the fixture data. Check the `scripts` in the `package.json` for easily running the example data and the demo server with GraphiQL. Now you can begin coding.
 
-Before commiting your changes, **run the lint, tests, and coverage to make sure everything is green.** After making your commits, push it up to your fork and make a pull request to our master branch. We will review it ASAP.
+Before committing your changes, **run the lint, tests, and coverage to make sure everything is green.** After making your commits, push it up to your fork and make a pull request to our master branch. We will review it ASAP.
 
 ## Release on NPM
 
@@ -77,6 +77,15 @@ npm dist-tag add join-monster@2.1.2 latest
 ```
 
 New versions MUST be compliant with [semver](http://semver.org/).
+
+## Docs
+
+The [docs](https://join-monster.readthedocs.io/en/latest/) should be updated on pushes to `master` (via webhook to Read the Docs). [Build history](https://readthedocs.org/projects/join-monster/builds/).
+
+For local development you need mkdocs:
+Run `pip3 install -r docs/requirements.txt`
+
+NOTE: This configuration was tested with python 3.9 which is what readthedocs is running.
 
 ## License
 

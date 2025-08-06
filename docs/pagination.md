@@ -1,7 +1,9 @@
+#
+
 ## Demo
 
-Check out the paginated [version of the demo](https://join-monster.herokuapp.com/graphql-relay?query=%7B%0A%20%20node(id%3A%20%22VXNlcjoy%22)%20%7B%0A%20%20%20%20...%20on%20User%20%7B%20id%2C%20fullName%20%7D%0A%20%20%7D%0A%20%20user(id%3A%202)%20%7B%0A%20%20%20%20id%0A%20%20%20%20fullName%0A%20%20%20%20posts(first%3A%202%2C%20after%3A%20%22eyJpZCI6NDh9%22)%20%7B%0A%20%20%20%20%20%20pageInfo%20%7B%0A%20%20%20%20%20%20%20%20hasNextPage%0A%20%20%20%20%20%20%20%20startCursor%0A%20%20%20%20%20%20%20%20endCursor%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20edges%20%7B%0A%20%20%20%20%20%20%20%20cursor%0A%20%20%20%20%20%20%20%20node%20%7B%0A%20%20%20%20%20%20%20%20%20%20id%0A%20%20%20%20%20%20%20%20%20%20body%0A%20%20%20%20%20%20%20%20%20%20comments%20(first%3A%203)%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20total%0A%20%20%20%20%20%20%20%20%20%20%20%20pageInfo%20%7B%20hasNextPage%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20edges%20%7B%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20node%20%7B%20id%2C%20body%20%7D%0A%20%20%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%7D%0A%20%20%7D%0A%7D%0A).
-Source code can be found [here](https://github.com/stems/join-monster-demo/tree/master/schema-paginated).
+Check out the paginated [version of the demo](https://join-monster-demo.onrender.com/graphql-relay?query=%257B%250A%2520%2520node%28id%253A%2520%2522VXNlcjoy%2522%29%2520%257B%250A%2520%2520%2520%2520...%2520on%2520User%2520%257B%2520id%252C%2520fullName%2520%257D%250A%2520%2520%257D%250A%2520%2520user%28id%253A%25202%29%2520%257B%250A%2520%2520%2520%2520id%250A%2520%2520%2520%2520fullName%250A%2520%2520%2520%2520posts%28first%253A%25202%252C%2520after%253A%2520%2522eyJpZCI6NDh9%2522%29%2520%257B%250A%2520%2520%2520%2520%2520%2520pageInfo%2520%257B%250A%2520%2520%2520%2520%2520%2520%2520%2520hasNextPage%250A%2520%2520%2520%2520%2520%2520%2520%2520startCursor%250A%2520%2520%2520%2520%2520%2520%2520%2520endCursor%250A%2520%2520%2520%2520%2520%2520%257D%250A%2520%2520%2520%2520%2520%2520edges%2520%257B%250A%2520%2520%2520%2520%2520%2520%2520%2520cursor%250A%2520%2520%2520%2520%2520%2520%2520%2520node%2520%257B%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520id%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520body%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520comments%2520%28first%253A%25203%29%2520%257B%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520pageInfo%2520%257B%2520hasNextPage%2520%257D%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520edges%2520%257B%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520node%2520%257B%2520id%252C%2520body%2520%257D%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%257D%250A%2520%2520%2520%2520%2520%2520%2520%2520%2520%2520%257D%250A%2520%2520%2520%2520%2520%2520%2520%2520%257D%250A%2520%2520%2520%2520%2520%2520%257D%250A%2520%2520%2520%2520%257D%250A%2520%2520%257D%250A%257D%250A).
+Source code can be found [here](https://github.com/join-monster/join-monster/tree/master/test-api/schema-paginated).
 
 Join Monster supports three different implementations of pagination, each of which can be combined with either `sqlJoin` or `sqlBatch` strategies to fetch the paginated field.
 Paginated fields are expected to be `GraphQLList` types wrapped in a **Connection** object type.
@@ -12,7 +14,7 @@ Join Monster happens to use this interface because it's a convenient standard.
 It also allows us to leverage [graphql-relay-js](https://github.com/graphql/graphql-relay-js). Again, this package is **does not require** you to use Relay on the client. It's simply a module for helping to set up Relay-compliant GraphQL APIs—of which pagination is a part of.
 
 
-**Not all dialects support every type of pagination.** Check the [dialects](/dialects) page for current pagination support for each dialect.
+**Not all dialects support every type of pagination.** Check the [dialects](dialects.md) page for current pagination support for each dialect.
 
 
 ### 1. Application-layer Paging
@@ -107,7 +109,7 @@ It uses a predictable, position-based integer that determines how many rows to s
 
 To use it, you must provide a connection type and choose a stable sort based on one or multiple columns.
 Tell Join Monster you want to use this method by adding two properties to the field.
-Set `sqlPaginate` to `true`. Set ([thunked](/API/#thunk)) `orderBy` to tell it how to sort.
+Set `sqlPaginate` to `true`. Set ([thunked](API.md#thunk)) `orderBy` to tell it how to sort.
 
 ```javascript
 import { forwardConnectionArgs } from 'graphql-relay'
@@ -248,7 +250,7 @@ Because the cursor is predictable, you get another interesting capability. You c
 
 This is possible because the 10th post *always* has the same cursor value, regardless of which user it belongs too. This is also true for comments or any other type. But because offsets work by skipping rows from the beginning, backward pagination is not possible.
 
-This implementation is not supported on all dialects. See the [dialects](/dialects) page for details.
+This implementation is not supported on all dialects. See the [dialects](dialects.md) page for details.
 
 | Pros | Cons |
 | ---- | ---- |
@@ -266,7 +268,7 @@ The uniqueness allows us to place the sort key into the cursor to uniquely ident
 We can use a `WHERE` in lieu of an `OFFSET`, which can benefit performance.
 It is the most scalable approach, but also the most limiting.
 Tell Join Monster to use this by providing a connection type and setting two properties.
-Again, set `sqlPaginate` to `true`. Set ([thunked](/API/#thunk)) `sortKey` to an object with an order direction and the key (which is either the name of the column or an array of column names).
+Again, set `sqlPaginate` to `true`. Set ([thunked](API.md#thunk)) `sortKey` to an object with an order direction and the key (which is either the name of the column or an array of column names).
 
 ```javascript
 const User = new GraphQLObjectType({
@@ -408,10 +410,10 @@ const Post = new GraphQLObjectType({
 })
 ```
 
-## LIMIT without pagination
+## LIMIT and OFFSET without pagination
 
 If you just want to limit the number of results in a list field, but don't want the Connection type and arguments,
-you can just use the ([thunked](/API/#thunk)) `limit` and `orderBy` properties on that field.
+you can just use the ([thunked](API.md#thunk)) `limit`, `offset` and `orderBy` properties on that field.
 
 ```javascript
 const Post = new GraphQLObjectType({
@@ -433,4 +435,32 @@ const Post = new GraphQLObjectType({
 })
 ```
 
-The `limit` can be an integer or a function that returns an integer. This feature is only supported if pagination is supported for you SQL dialect.
+The `limit` and `offset` can be an integer or a function that returns an integer.
+
+### 4. Max and Default Page Size in Pagination
+
+If you want to limit the maximum number of results allowed in a list field,
+you can use the `sqlPageLimit`.
+To set a default page size use `sqlDefaultPageSize`. without a sqlDefaultPageSize, server defaults to a max limit as per the db in use.
+
+```javascript
+const Post = new GraphQLObjectType({
+  // ...
+  fields: () => ({
+    // ...
+    only3Comments: {
+      type: new GraphQLList(Comment),
+      extensions: {
+        joinMonster: {
+          sqlPaginate: true,
+          sqlPageLimit: 100,
+          sqlDefaultPageSize: 5,
+          ...
+        }
+      }
+    }
+  })
+})
+```
+
+The `sqlPageLimit` and `sqlDefaultPageSize` fields are integers. This feature is only supported if pagination is supported for your SQL dialect and sqlPaginate is set.

@@ -1,3 +1,136 @@
+### vNEXT 
+#### Fixed
+- [#549](https://github.com/join-monster/join-monster/pull/549): Fix alwaysFetch for junction clause.
+- [#539](https://github.com/join-monster/join-monster/pull/539): Do not rely on test-api for order tests setup.
+- [#538](https://github.com/join-monster/join-monster/pull/538): Refactor: cleanup code around sorting.
+- [#537](https://github.com/join-monster/join-monster/pull/537): Fix for messed up files syntax.
+- [#535](https://github.com/join-monster/join-monster/pull/535): Allow manual offset and limit control.
+
+### v4.0.0 (July 1, 2024)
+**Breaking changes:**
+
+It is no longer guaranteed that a field's value is available under `source[fieldName]` in a custom resolver. Instead, custom resolvers on [non-trivial fields](./warnings.md#non-trivial-fields)  need to use GraphQL's default resolver to get the field value:
+
+```javascript
+import { defaultFieldResolver } from 'graphql'
+
+const User = new GraphQLObjectType({
+  //...
+  fields: () => ({
+    //...
+    following: {
+      // ...
+      resolve: (source, args, context, info) => {
+        const value = defaultFieldResolver(source, args, context, info)
+        return processUsers(value)
+      }
+    }
+  })
+})
+```
+
+See the [docs on custom resolvers](./warnings.md#custom-resolvers) for more details.
+
+#### Fixed
+- [#482](https://github.com/join-monster/join-monster/pull/482): Support different arguments for different aliases
+
+### v3.3.5 (May 28, 2024)
+#### Fixed
+- [#532](https://github.com/join-monster/join-monster/pull/530): Updates mkdocs to 1.5.3.
+- [#530](https://github.com/join-monster/join-monster/pull/530): Add test to make sure different names won't collapse to same alias.
+- [#525](https://github.com/join-monster/join-monster/pull/525): Fix readthedocs deploys.
+- [#526](https://github.com/join-monster/join-monster/pull/526): Warns when alias length is exceeded for what postgres allows.
+- [#523](https://github.com/join-monster/join-monster/pull/523): Make demo runnable again.
+- [#522](https://github.com/join-monster/join-monster/pull/522): Version bumps for critical dependencies.
+- [#519](https://github.com/join-monster/join-monster/pull/519): Handle disjoint fields requested across union types
+- [#532](https://github.com/join-monster/join-monster/pull/533): Add `aliasPrefix` option.
+
+### v3.3.4 (March 28, 2024)
+#### Fixed
+- [#516](https://github.com/join-monster/join-monster/pull/516): Version bumps to accept security fixes for some dependencies.
+- [#514](https://github.com/join-monster/join-monster/pull/514): Fix of minify issues that cause production builds of react native to fail.
+
+### v3.3.2 (August 27, 2023)
+#### Fixed
+- [#506](https://github.com/join-monster/join-monster/pull/506): Removed use of dynamic require which was preventing join-monster deployments with react native. Tested with expo-sqlite on Android (outside of this environment). 
+
+### v3.3.1 (June 26, 2023)
+- [#502](https://github.com/join-monster/join-monster/pull/502): npm installer did not like the support specified as  "graphql@^16.0.0|^15.4.0" in the package.json. This PR backs this out and only specifies support for 16.X of graphql in the peer dependencies
+### v3.3.0 (June 26, 2023)
+#### Updated
+- [#495](https://github.com/join-monster/join-monster/pull/495): 
+  - Added support for GraphQL v16_6_0. There were a number of breaking changes introduced in GraphQL v16 and these impacted a large number of tests and bit of the code. This provides fixes for those breaking changes.
+  - ⚠️ Drops support for Node versions 10 - 13
+  - Adds support for Node v16.
+- [#496](https://github.com/join-monster/join-monster/pull/496): Adds support for Node v17 - v19.
+- [#498](https://github.com/join-monster/join-monster/pull/498): Upgrading packages to eliminate high and critical security vulnerabilities
+- [#499](https://github.com/join-monster/join-monster/pull/499): Upgrade of AVA test framework and dependencies.
+- [#500](https://github.com/join-monster/join-monster/pull/499): bump version and add support for node v20. Nodes v 14 - 20 are tested in the pipeline with this change (but not v15 as it has issues)
+
+### v3.1.1 (January 17, 2022)
+
+#### Fixed
+
+- Revert `package-lock.json` update from [358c38a](https://github.com/join-monster/join-monster/commit/358c38a21041357a69281ecd31494c1341259814) (fixes [#466](https://github.com/join-monster/join-monster/issues/466))
+
+### v3.1.0 (January 17, 2022)
+
+#### Fixed
+
+- Fix `alwaysFetch`'s type [#465](https://github.com/join-monster/join-monster/pull/465)
+
+#### Updated
+
+- Dependabot bumps
+
+#### Added
+
+- [#425](https://github.com/join-monster/join-monster/pull/425): Add support for resolving GraphQL scalars backed by `sqlTable`s. Usually, scalars point to table columns, but this allows them to use the same `extensions` property to declare that the scalar is a whole table. This is often paired with a `resolve` function that takes what `join-monster` returns and turns it into a valid value for the scalar. An example would be a tags field that outputs a list of strings, but where each tag is actually stored as it's own row in a different table in the database, or backing a `JSONScalar` by a table to get around GraphQL's type strictness.
+
+```javascript
+export const Tag = new GraphQLScalarType({
+  name: 'Tag',
+  extensions: {
+    joinMonster: {
+      sqlTable: 'tags',
+      uniqueKey: 'id',
+      alwaysFetch: ['id', 'tag', 'tag_order']
+    }
+  },
+  parseValue: String,
+  serialize: String,
+  parseLiteral(ast) {
+    // ...
+  }
+})
+```
+
+### v3.0.4 (September 10, 2021 )
+
+#### Added
+
+- Added sqlDefaultPageSizeLimit and sqlPageLimit field specs to allow user to configure a default page limit and maximum page size limit for paginated fields.
+
+```javascript
+const Post = new GraphQLObjectType({
+  // ...
+  fields: () => ({
+    // ...
+    only3Comments: {
+      type: new GraphQLList(Comment),
+      extensions: {
+        joinMonster: {
+          sqlPaginate: true,
+          sqlPageLimit: 100,
+          sqlDefaultPageSize: 5,
+          ...
+        }
+      }
+    }
+  })
+})
+```
+
 ### v3.0.2 (April 4, 2021)
 
 #### Fixed

@@ -13,14 +13,30 @@ export function errCheck(t, errors) {
   // t.log will report better than console.log, as it will show it contextually next to the test case
   if (errors && errors.length) {
     t.log(errors[0].message)
-    // the stack traces get super long with ava becuase it adds a ton of stack frames below each test case
-    // lets chop the error messages to focues on the stuff coming from source code
-    t.log(
-      errors[0].stack
-        .split('\n')
-        .slice(0, -40)
-        .join('\n')
-    )
+    t.log(errors[0].stack)
   }
   t.is(errors, undefined)
+}
+
+export function getDatabaseOptions(knex) {
+  const { PAGINATE, STRATEGY, MINIFY, ALIAS_PREFIX, DB } = process.env
+  const options = {
+    minify: +MINIFY === 1,
+    aliasPrefix: ALIAS_PREFIX,
+    db: DB,
+    strategy: STRATEGY,
+    paginate: PAGINATE,
+  }
+  const client = knex.client.config.client
+  if (client === 'mysql') {
+    options.dialect = PAGINATE ? 'mysql8' : 'mysql'
+  } else if (client === 'pg') {
+    options.dialect = 'pg'
+  } else if (client === 'oracledb') {
+    options.dialect = 'oracle'
+  } else if (client === 'sqlite3') {
+    options.dialect = 'sqlite3'
+  }
+
+  return options
 }

@@ -6,8 +6,9 @@ import { validateSqlAST, inspect } from '../util'
 import {
   joinPrefix,
   thisIsNotTheEndOfThisBatch,
-  sortKeyToOrderings,
-  whereConditionIsntSupposedToGoInsideSubqueryOrOnNextBatch
+  flipOrderings,
+  whereConditionIsntSupposedToGoInsideSubqueryOrOnNextBatch,
+  orderingsToString
 } from './shared'
 
 export default async function stringifySqlAST(topNode, context, options) {
@@ -16,7 +17,15 @@ export default async function stringifySqlAST(topNode, context, options) {
   let dialect = options.dialectModule
 
   if (!dialect && options.dialect) {
-    dialect = require('./dialects/' + options.dialect)
+    const dialectRequireOptions = {
+      sqlite3: require('./dialects/sqlite3'),
+      pg: require('./dialects/pg'),
+      oracle: require('./dialects/oracle'),
+      mysql8: require('./dialects/mysql8'),
+      mysql: require('./dialects/mysql'),
+      mariadb: require('./dialects/mariadb'),
+    }
+    dialect = dialectRequireOptions[options.dialect]
   }
 
   // recursively figure out all the selections, joins, and where conditions that we need
@@ -33,13 +42,21 @@ export default async function stringifySqlAST(topNode, context, options) {
     dialect
   )
 
+  // bail out if they made no selections
+  if (!selections.length) return ''
+
+  if (dialect.maxAliasLength) {
+    const exceedingAliases = selections.filter(([, alias]) => alias.length > dialect.maxAliasLength)
+    if (exceedingAliases.length) {
+      // eslint-disable-next-line max-len
+      console.warn(`Alias length exceeds the max allowed length of ${dialect.maxAliasLength} characters for ${dialect.name}: ${exceedingAliases.map(([column, alias]) => `${column} AS ${alias}`).join(', ')}`)
+    }
+  }
+
   // make sure these are unique by converting to a set and then back to an array
   // e.g. we want to get rid of things like `SELECT user.id as id, user.id as id, ...`
   // GraphQL does not prevent queries with duplicate fields
-  selections = [...new Set(selections)]
-
-  // bail out if they made no selections
-  if (!selections.length) return ''
+  selections = [...new Set(selections.map(([column, alias]) => `${column} AS ${alias}`))]
 
   // put together the SQL query
   let sql = 'SELECT\n  ' + selections.join(',\n  ') + '\n' + tables.join('\n')
@@ -154,28 +171,16 @@ async function _stringifySqlAST(
 
       break
     case 'column':
-      selections.push(
-        `${q(parentTable)}.${q(node.name)} AS ${q(
-          joinPrefix(prefix) + node.as
-        )}`
-      )
+      selections.push([`${q(parentTable)}.${q(node.name)}`, `${q(joinPrefix(prefix) + node.as)}`])
       break
     case 'columnDeps':
       // grab the dependant columns
       for (let name in node.names) {
-        selections.push(
-          `${q(parentTable)}.${q(name)} AS ${q(
-            joinPrefix(prefix) + node.names[name]
-          )}`
-        )
+        selections.push([`${q(parentTable)}.${q(name)}`, `${q(joinPrefix(prefix) + node.names[name])}`])
       }
       break
     case 'composite':
-      selections.push(
-        `${dialect.compositeKey(parentTable, node.name)} AS ${q(
-          joinPrefix(prefix) + node.as
-        )}`
-      )
+      selections.push([`${dialect.compositeKey(parentTable, node.name)}`, `${q(joinPrefix(prefix) + node.as)}`])
       break
     case 'expression':
       const expr = await node.sqlExpr(
@@ -184,7 +189,7 @@ async function _stringifySqlAST(
         context,
         node
       )
-      selections.push(`${expr} AS ${q(joinPrefix(prefix) + node.as)}`)
+      selections.push([`${expr}`, `${q(joinPrefix(prefix) + node.as)}`])
       break
     case 'noop':
       // we hit this with fields that don't need anything from SQL, they resolve independently
@@ -243,13 +248,13 @@ async function handleTable(
     if (idx(node, _ => _.junction.sortKey)) {
       orders.push({
         table: node.junction.as,
-        columns: sortKeyToOrderings(node.junction.sortKey, node.args)
+        columns: flipOrderings(node.junction.sortKey, node.args)
       })
     }
     if (node.sortKey) {
       orders.push({
         table: node.as,
-        columns: sortKeyToOrderings(node.sortKey, node.args)
+        columns: flipOrderings(node.sortKey, node.args)
       })
     }
   }
@@ -292,11 +297,10 @@ async function handleTable(
     // many-to-many using batching
   } else if (idx(node, _ => _.junction.sqlBatch)) {
     if (parent) {
-      selections.push(
-        `${q(parent.as)}.${q(node.junction.sqlBatch.parentKey.name)} AS ${q(
-          joinPrefix(prefix) + node.junction.sqlBatch.parentKey.as
-        )}`
-      )
+      selections.push([
+        `${q(parent.as)}.${q(node.junction.sqlBatch.parentKey.name)}`, 
+        `${q(joinPrefix(prefix) + node.junction.sqlBatch.parentKey.as)}`
+      ])
     } else {
       const joinCondition = await node.junction.sqlBatch.sqlJoin(
         `${q(node.junction.as)}`,
@@ -386,11 +390,10 @@ async function handleTable(
     // one-to-many with batching
   } else if (node.sqlBatch) {
     if (parent) {
-      selections.push(
-        `${q(parent.as)}.${q(node.sqlBatch.parentKey.name)} AS ${q(
-          joinPrefix(prefix) + node.sqlBatch.parentKey.as
-        )}`
-      )
+      selections.push([
+        `${q(parent.as)}.${q(node.sqlBatch.parentKey.name)}`, 
+        `${q(joinPrefix(prefix) + node.sqlBatch.parentKey.as)}`
+      ])
     } else if (node.paginate) {
       await dialect.handleBatchedOneToManyPaginated(
         parent,
@@ -437,11 +440,7 @@ async function handleTable(
 function stringifyOuterOrder(orders, q) {
   const conditions = []
   for (const condition of orders) {
-    for (const ordering of condition.columns) {
-      conditions.push(
-        `${q(condition.table)}.${q(ordering.column)} ${ordering.direction}`
-      )
-    }
+    conditions.push(orderingsToString(condition.columns, q, condition.table))
   }
   return conditions.join(', ')
 }

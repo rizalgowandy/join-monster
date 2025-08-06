@@ -72,56 +72,53 @@ const User = new GraphQLObjectType({
       resolve: PAGINATE
         ? undefined
         : (user, args) => {
-            user.comments.sort((a, b) => a.id - b.id)
-            return connectionFromArray(user.comments, args)
-          },
+          user.comments.sort((a, b) => a.id - b.id)
+          return connectionFromArray(user.comments, args)
+        },
       extensions: {
         joinMonster: {
           sqlPaginate: !!PAGINATE,
-          ...do {
-            if (PAGINATE === 'offset') {
-              ;({ orderBy: 'id' })
-            } else if (PAGINATE === 'keyset') {
-              ;({
+          sqlDefaultPageSize: 2,
+          sqlPageLimit: 100,
+
+          ...(PAGINATE === 'offset' ?
+            { orderBy: 'id' } :
+            PAGINATE === 'keyset' ?
+              {
                 sortKey: {
                   order: 'desc',
                   key: 'id'
                 }
-              })
-            } else {
+              } :
+
               {
               }
-            }
-          },
-          ...do {
-            if (STRATEGY === 'batch' || STRATEGY === 'mix') {
-              ;({
-                sqlBatch: {
-                  thisKey: 'author_id',
-                  parentKey: 'id'
-                },
-                where: (table, args) =>
-                  args.active
-                    ? `${table}.${q('archived', DB)} = ${bool(false, DB)}`
-                    : null
-              })
-            } else {
-              ;({
-                sqlJoin: (userTable, commentTable, args) =>
-                  `${commentTable}.${q('author_id', DB)} = ${userTable}.${q(
-                    'id',
+          ),
+          ...(STRATEGY === 'batch' || STRATEGY === 'mix' ?
+            {
+              sqlBatch: {
+                thisKey: 'author_id',
+                parentKey: 'id'
+              },
+              where: (table, args) =>
+                args.active
+                  ? `${table}.${q('archived', DB)} = ${bool(false, DB)}`
+                  : null
+            } :
+            {
+              sqlJoin: (userTable, commentTable, args) =>
+                `${commentTable}.${q('author_id', DB)} = ${userTable}.${q(
+                  'id',
+                  DB
+                )} ${args.active
+                  ? `AND ${commentTable}.${q('archived', DB)} = ${bool(
+                    false,
                     DB
-                  )} ${
-                    args.active
-                      ? `AND ${commentTable}.${q('archived', DB)} = ${bool(
-                          false,
-                          DB
-                        )}`
-                      : ''
-                  }`
-              })
+                  )}`
+                  : ''
+                }`
             }
-          }
+          )
         }
       }
     },
@@ -133,18 +130,18 @@ const User = new GraphQLObjectType({
           limit: () => 2,
           ...(STRATEGY === 'batch'
             ? {
-                sqlBatch: {
-                  thisKey: 'author_id',
-                  parentKey: 'id'
-                }
+              sqlBatch: {
+                thisKey: 'author_id',
+                parentKey: 'id'
               }
+            }
             : {
-                sqlJoin: (userTable, commentTable) =>
-                  `${commentTable}.${q('author_id', DB)} = ${userTable}.${q(
-                    'id',
-                    DB
-                  )}`
-              })
+              sqlJoin: (userTable, commentTable) =>
+                `${commentTable}.${q('author_id', DB)} = ${userTable}.${q(
+                  'id',
+                  DB
+                )}`
+            })
         }
       }
     },
@@ -158,58 +155,47 @@ const User = new GraphQLObjectType({
       resolve: PAGINATE
         ? undefined
         : (user, args) => {
-            user.posts.sort((a, b) => a.id - b.id)
-            return connectionFromArray(user.posts, args)
-          },
+          user.posts.sort((a, b) => a.id - b.id)
+          return connectionFromArray(user.posts, args)
+        },
       extensions: {
         joinMonster: {
           sqlPaginate: !!PAGINATE,
-          ...do {
-            if (PAGINATE === 'offset') {
-              ;({
-                orderBy: args => [
-                  // eslint-disable-line no-unused-vars
-                  { column: 'created_at', direction: 'desc' },
-                  { column: 'id', direction: 'asc' }
-                ]
-              })
-            } else if (PAGINATE === 'keyset') {
-              ;({
+          ...(PAGINATE === 'offset' ?
+            {
+              orderBy: args => [
+                // eslint-disable-line no-unused-vars
+                { column: 'created_at', direction: 'desc' },
+                { column: 'id', direction: 'asc' }
+              ]
+            } :
+            PAGINATE === 'keyset' ?
+              {
                 sortKey: args => [
                   // eslint-disable-line no-unused-vars
                   { direction: 'desc', column: 'created_at' },
                   { direction: 'desc', column: 'id' }
                 ]
-              })
-            } else {
-              {
-              }
-            }
-          },
+              } : {}
+          ),
           where: (table, args) => {
             if (args.search)
-              return `lower(${table}.${q('body', DB)}) LIKE lower('%${
-                args.search
-              }%')`
+              return `lower(${table}.${q('body', DB)}) LIKE lower('%${args.search
+                }%')`
           },
-          ...do {
-            if (STRATEGY === 'batch') {
-              ;({
-                sqlBatch: {
-                  thisKey: 'author_id',
-                  parentKey: 'id'
-                }
-              })
-            } else {
-              ;({
-                sqlJoin: (userTable, postTable) =>
-                  `${postTable}.${q('author_id', DB)} = ${userTable}.${q(
-                    'id',
-                    DB
-                  )}`
-              })
-            }
-          }
+          ...(STRATEGY === 'batch' ?
+            {
+              sqlBatch: {
+                thisKey: 'author_id',
+                parentKey: 'id'
+              }
+            } : {
+              sqlJoin: (userTable, postTable) =>
+                `${postTable}.${q('author_id', DB)} = ${userTable}.${q(
+                  'id',
+                  DB
+                )}`
+            })
         }
       }
     },
@@ -224,40 +210,38 @@ const User = new GraphQLObjectType({
       resolve: PAGINATE
         ? undefined
         : (user, args) => {
-            return connectionFromArray(user.following, args)
-          },
+          return connectionFromArray(user.following, args)
+        },
       extensions: {
         joinMonster: {
           where: table => `${table}.${q('email_address', DB)} IS NOT NULL`,
           sqlPaginate: !!PAGINATE,
-          ...do {
-            if (PAGINATE === 'offset') {
-              ;({
-                orderBy: args =>
-                  args.sortOnMain
-                    ? [
-                        { column: 'created_at', direction: 'ASC' },
-                        { column: 'id', direction: 'ASC' }
-                      ]
-                    : null
-              })
-            } else if (PAGINATE === 'keyset') {
-              ;({
+          ...(PAGINATE === 'offset' ?
+            {
+              orderBy: args =>
+                args.sortOnMain
+                  ? [
+                    { column: 'created_at', direction: 'ASC' },
+                    { column: 'id', direction: 'ASC' }
+                  ]
+                  : null
+            } :
+            PAGINATE === 'keyset' ?
+              {
                 sortKey: args =>
                   args.sortOnMain
                     ? {
-                        order: 'ASC',
-                        key: ['created_at', 'id']
-                      }
+                      order: 'ASC',
+                      key: ['created_at', 'id']
+                    }
                     : null
-              })
-            } else {
+              } :
               {
               }
-            }
-          },
+          ),
           junction: {
             sqlTable: `(SELECT * FROM ${q('relationships', DB)})`,
+            alwaysFetch: ['closeness'],
             where: (table, args) =>
               args.intimacy
                 ? `${table}.${q('closeness', DB)} = '${args.intimacy}'`
@@ -276,60 +260,54 @@ const User = new GraphQLObjectType({
                 ignoreAll: false
               }
             },
-            ...do {
-              if (PAGINATE === 'offset') {
-                ;({
-                  orderBy: args =>
-                    args.sortOnMain
-                      ? null
-                      : {
-                          created_at: 'DESC',
-                          followee_id: 'ASC'
-                        }
-                })
-              } else if (PAGINATE === 'keyset') {
-                ;({
+            ...(PAGINATE === 'offset' ?
+              {
+                orderBy: args =>
+                  args.sortOnMain
+                    ? null
+                    : {
+                      created_at: 'DESC',
+                      followee_id: 'ASC'
+                    }
+              } :
+              PAGINATE === 'keyset' ?
+                {
                   sortKey: args =>
                     args.sortOnMain
                       ? null
                       : [
-                          { direction: 'ASC', column: 'created_at' },
-                          { direction: 'ASC', column: 'followee_id' }
-                        ]
-                })
+                        { direction: 'ASC', column: 'created_at' },
+                        { direction: 'ASC', column: 'followee_id' }
+                      ]
+                } : {}),
+            ...(STRATEGY === 'batch' || STRATEGY === 'mix' ?
+              {
+                uniqueKey: ['follower_id', 'followee_id'],
+                sqlBatch: {
+                  thisKey: 'follower_id',
+                  parentKey: 'id',
+                  sqlJoin: (relationTable, followeeTable) =>
+                    `${relationTable}.${q(
+                      'followee_id',
+                      DB
+                    )} = ${followeeTable}.${q('id', DB)}`
+                }
+              } :
+              {
+                sqlJoins: [
+                  (followerTable, relationTable) =>
+                    `${followerTable}.${q('id', DB)} = ${relationTable}.${q(
+                      'follower_id',
+                      DB
+                    )}`,
+                  (relationTable, followeeTable) =>
+                    `${relationTable}.${q(
+                      'followee_id',
+                      DB
+                    )} = ${followeeTable}.${q('id', DB)}`
+                ]
               }
-            },
-            ...do {
-              if (STRATEGY === 'batch' || STRATEGY === 'mix') {
-                ;({
-                  uniqueKey: ['follower_id', 'followee_id'],
-                  sqlBatch: {
-                    thisKey: 'follower_id',
-                    parentKey: 'id',
-                    sqlJoin: (relationTable, followeeTable) =>
-                      `${relationTable}.${q(
-                        'followee_id',
-                        DB
-                      )} = ${followeeTable}.${q('id', DB)}`
-                  }
-                })
-              } else {
-                ;({
-                  sqlJoins: [
-                    (followerTable, relationTable) =>
-                      `${followerTable}.${q('id', DB)} = ${relationTable}.${q(
-                        'follower_id',
-                        DB
-                      )}`,
-                    (relationTable, followeeTable) =>
-                      `${relationTable}.${q(
-                        'followee_id',
-                        DB
-                      )} = ${followeeTable}.${q('id', DB)}`
-                  ]
-                })
-              }
-            }
+            )
           }
         }
       }
@@ -342,37 +320,34 @@ const User = new GraphQLObjectType({
           orderBy: 'followee_id',
           junction: {
             sqlTable: q('relationships', DB),
-            ...do {
-              if (STRATEGY === 'batch' || STRATEGY === 'mix') {
-                ;({
-                  uniqueKey: ['follower_id', 'followee_id'],
-                  sqlBatch: {
-                    thisKey: 'follower_id',
-                    parentKey: 'id',
-                    sqlJoin: (relationTable, followeeTable) =>
-                      `${relationTable}.${q(
-                        'followee_id',
-                        DB
-                      )} = ${followeeTable}.${q('id', DB)}`
-                  }
-                })
-              } else {
-                ;({
-                  sqlJoins: [
-                    (followerTable, relationTable) =>
-                      `${followerTable}.${q('id', DB)} = ${relationTable}.${q(
-                        'follower_id',
-                        DB
-                      )}`,
-                    (relationTable, followeeTable) =>
-                      `${relationTable}.${q(
-                        'followee_id',
-                        DB
-                      )} = ${followeeTable}.${q('id', DB)}`
-                  ]
-                })
+            ...(STRATEGY === 'batch' || STRATEGY === 'mix' ?
+              {
+                uniqueKey: ['follower_id', 'followee_id'],
+                sqlBatch: {
+                  thisKey: 'follower_id',
+                  parentKey: 'id',
+                  sqlJoin: (relationTable, followeeTable) =>
+                    `${relationTable}.${q(
+                      'followee_id',
+                      DB
+                    )} = ${followeeTable}.${q('id', DB)}`
+                }
+              } :
+              {
+                sqlJoins: [
+                  (followerTable, relationTable) =>
+                    `${followerTable}.${q('id', DB)} = ${relationTable}.${q(
+                      'follower_id',
+                      DB
+                    )}`,
+                  (relationTable, followeeTable) =>
+                    `${relationTable}.${q(
+                      'followee_id',
+                      DB
+                    )} = ${followeeTable}.${q('id', DB)}`
+                ]
               }
-            }
+            )
           }
         }
       }
@@ -383,46 +358,42 @@ const User = new GraphQLObjectType({
       resolve: PAGINATE
         ? undefined
         : (user, args) => {
-            return connectionFromArray(user.following, args)
-          },
+          return connectionFromArray(user.following, args)
+        },
       extensions: {
         joinMonster: {
           sqlPaginate: !!PAGINATE,
-          ...do {
-            if (PAGINATE === 'offset') {
-              ;({
-                orderBy: [
-                  { column: 'id', direction: 'ASC' },
-                  { column: 'created_at', direction: 'ASC' }
-                ]
-              })
-            } else if (PAGINATE === 'keyset') {
-              ;({
+          ...(PAGINATE === 'offset' ?
+            {
+              orderBy: [
+                { column: 'id', direction: 'ASC' },
+                { column: 'created_at', direction: 'ASC' }
+              ]
+            } :
+            PAGINATE === 'keyset' ?
+              {
                 sortKey: {
                   order: 'ASC',
                   key: ['id', 'created_at']
                 }
-              })
-            } else {
-              ;({
+              } : {
                 orderBy: 'id'
-              })
-            }
-          },
+              }
+          ),
           ...(STRATEGY === 'batch'
             ? {
-                sqlBatch: {
-                  thisKey: 'author_id',
-                  parentKey: 'id'
-                }
+              sqlBatch: {
+                thisKey: 'author_id',
+                parentKey: 'id'
               }
+            }
             : {
-                sqlJoin: (userTable, unionTable) =>
-                  `${userTable}.${q('id', DB)} = ${unionTable}.${q(
-                    'author_id',
-                    DB
-                  )}`
-              })
+              sqlJoin: (userTable, unionTable) =>
+                `${userTable}.${q('id', DB)} = ${unionTable}.${q(
+                  'author_id',
+                  DB
+                )}`
+            })
         }
       }
     },
@@ -476,7 +447,7 @@ const User = new GraphQLObjectType({
   })
 })
 
-const connectionConfig = { nodeType: GraphQLNonNull(User) }
+const connectionConfig = { nodeType: new GraphQLNonNull(User) }
 if (PAGINATE === 'offset') {
   connectionConfig.connectionFields = {
     total: { type: GraphQLInt }

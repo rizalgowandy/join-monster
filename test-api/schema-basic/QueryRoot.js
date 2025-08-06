@@ -6,7 +6,7 @@ import {
   GraphQLBoolean
 } from 'graphql'
 
-import knex from './database'
+import knex from '../data/database'
 import dbCall from '../data/fetch'
 
 import User from './User'
@@ -20,9 +20,10 @@ import sqlite3Module from '../../src/stringifiers/dialects/sqlite3'
 
 import joinMonster from '../../src/index'
 
-const { MINIFY, DB } = process.env
+const { MINIFY, ALIAS_PREFIX, DB } = process.env
 const options = {
-  minify: MINIFY == 1
+  minify: MINIFY == 1,
+  aliasPrefix: ALIAS_PREFIX
 }
 if (knex.client.config.client === 'mysql') {
   options.dialectModule = mysqlModule
@@ -103,11 +104,21 @@ export default new GraphQLObjectType({
         }
       },
       resolve: (parent, args, context, resolveInfo) => {
-        return joinMonster(
-          resolveInfo,
-          context,
-          sql => dbCall(sql, knex, context),
-          options
+         // Add a hook to capture the SQL
+    
+         const sqlLogger = sql => {
+         // Store it in the context for the test to access
+            if (context && Object.prototype.hasOwnProperty.call(context, 'capturedSql')) {
+               context.capturedSql = sql
+            }
+            return dbCall(sql, knex, context)
+         }
+
+         return joinMonster(
+            resolveInfo,
+            context,
+            sqlLogger,
+            options
         )
       }
     },
@@ -125,7 +136,7 @@ export default new GraphQLObjectType({
             // eslint-disable-line no-unused-vars
             if (args.filterLegless)
               return `${sponsorsTable}.${q('num_legs', DB)} IS NULL`
-          }
+          } 
         }
       },
       resolve: (parent, args, context, resolveInfo) => {
